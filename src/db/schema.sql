@@ -1,8 +1,8 @@
-CREATE TABLE files (
-    path        TEXT PRIMARY KEY,   -- absolute, normalized path
-    atime       INTEGER NOT NULL,   -- last access time (unix timestamp)
-    count       INTEGER NOT NULL,   -- number of accesses
-    score       REAL NOT NULL       -- precomputed score
-);
+"CREATE TABLE files ("
+"    path        TEXT PRIMARY KEY,"
+"    atime       INTEGER NOT NULL,"
+"    count       INTEGER NOT NULL,"
+"    score       REAL NOT NULL"
+");"
 
-CREATE INDEX idx_score ON files(score DESC);
+"CREATE INDEX idx_score ON files(score DESC);"

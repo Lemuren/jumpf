@@ -2,7 +2,7 @@
 CC       := gcc
 CFLAGS   := -std=c11 -Wall -Wextra -Wpedantic -g
 LDFLAGS  := 
-LDLIBS   := -lsqlite3
+LDLIBS   := -lsqlite3 -lm
 
 # Directories.
 SRC_DIR      := src
@@ -57,7 +57,7 @@ test: $(TEST_BIN)
 
 # Pattern rule for object files.
 $(OBJ_DIR)/%.o: %.c
-	mkdir -p $(dir $@)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) -c $< -o $@
 
 # Clean.
