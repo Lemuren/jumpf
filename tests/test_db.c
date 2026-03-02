@@ -40,9 +40,9 @@ static void test_db_get_top_empty() {
     assert_non_null(db);
 
     // Retrieve a (hopefully) empty list of results.
-    db_file_t *files;
+    char **paths;
     int count = 0;
-    int rc = db_get_top(db, 10, &files, &count);
+    int rc = db_get_top(db, 10, &paths, &count);
     assert_int_equal(rc, 0);
     assert_int_equal(count, 0);
 
@@ -68,16 +68,16 @@ static void test_db_insert_and_get() {
     rc = db_update_file(db, "d", TIMESTAMP + 2);
     assert_int_equal(rc, 0);
 
-    db_file_t *files;
+    char **paths;
     int count = 0;
-    rc = db_get_top(db, 10, &files, &count);
+    rc = db_get_top(db, 10, &paths, &count);
     assert_int_equal(rc, 0);
     assert_int_equal(count, 4);
 
-    assert_string_equal(files[0].path, "c");
-    assert_string_equal(files[1].path, "d");
-    assert_string_equal(files[2].path, "b");
-    assert_string_equal(files[3].path, "a");
+    assert_string_equal(paths[0], "c");
+    assert_string_equal(paths[1], "d");
+    assert_string_equal(paths[2], "b");
+    assert_string_equal(paths[3], "a");
 
     unlink(path);
 }
@@ -98,14 +98,14 @@ static void test_db_limit() {
     rc = db_update_file(db, "c", TIMESTAMP + 2);
     assert_int_equal(rc, 0);
 
-    db_file_t *files;
+    char **paths;
     int count = 0;
-    rc = db_get_top(db, 2, &files, &count);
+    rc = db_get_top(db, 2, &paths, &count);
     assert_int_equal(rc, 0);
     assert_int_equal(count, 2);
 
-    assert_string_equal(files[0].path, "c");
-    assert_string_equal(files[1].path, "b");
+    assert_string_equal(paths[0], "c");
+    assert_string_equal(paths[1], "b");
 
     unlink(path);
 }
@@ -127,14 +127,14 @@ static void test_db_idempotent() {
     rc = db_update_file(db, "a", TIMESTAMP + 2);
     assert_int_equal(rc, 0);
 
-    db_file_t *files;
+    char **paths;
     int count = 0;
-    rc = db_get_top(db, 10, &files, &count);
+    rc = db_get_top(db, 10, &paths, &count);
     assert_int_equal(rc, 0);
     assert_int_equal(count, 2);
 
-    assert_string_equal(files[0].path, "a");
-    assert_string_equal(files[1].path, "b");
+    assert_string_equal(paths[0], "a");
+    assert_string_equal(paths[1], "b");
 
     unlink(path);
 }
