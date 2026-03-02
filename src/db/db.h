@@ -5,8 +5,8 @@
 
 typedef struct db db_t;
 
-db_t *db_init(const char *path);
-int db_update_file(db_t *db, const char *path, int atime);
-int db_get_top(db_t *db, int limit, char ***paths, int *count);
+int db_init(const char *db_path);
+int db_update_file(const char *db_path, const char *path, int atime);
+int db_get_top(const char *db_path, int limit, char ***paths, int *count);
 
 #endif

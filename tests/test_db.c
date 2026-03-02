@@ -10,34 +10,31 @@
 
 // Assert we can initialize an empty database in memory.
 static void test_db_init() {
-    db_t *db = db_init(":memory:");
-    assert_non_null(db);
+    assert_int_equal(db_init(":memory:"), 0);
 }
 
 
 // Assert we can initialize an empty database on disk.
 static void test_db_init_2() {
     // Remove file if it already exists.
-    const char *path = "/tmp/foo.db";
-    unlink(path);
+    const char *db = "/tmp/foo.db";
+    unlink(db);
 
     // Create database at the path.
-    db_t *db = db_init(path);
-    assert_non_null(db);
+    assert_int_equal(db_init(db), 0);
 
     // Check that db file exists and then remove it.
     struct stat st;
-    assert_int_equal(stat(path, &st), 0);
+    assert_int_equal(stat(db, &st), 0);
     assert_true(S_ISREG(st.st_mode));
-    unlink(path);
+    unlink(db);
 }
 
 // Assert we can retrieve top files from an empty database.
 static void test_db_get_top_empty() {
     // Initialize database.
-    const char *path = "/tmp/foo.db";
-    db_t *db = db_init(path);
-    assert_non_null(db);
+    const char *db = "/tmp/foo.db";
+    assert_int_equal(db_init(db), 0);
 
     // Retrieve a (hopefully) empty list of results.
     char **paths;
@@ -46,16 +43,15 @@ static void test_db_get_top_empty() {
     assert_int_equal(rc, 0);
     assert_int_equal(count, 0);
 
-    unlink(path);
+    unlink(db);
 }
 
 
 // Assert we can insert a few files and retrieve them in the expected order.
 static void test_db_insert_and_get() {
     // Initialize database.
-    const char *path = "/tmp/foo.db";
-    db_t *db = db_init(path);
-    assert_non_null(db);
+    const char *db = "/tmp/foo.db";
+    assert_int_equal(db_init(db), 0);
 
     int rc;
 
@@ -79,15 +75,14 @@ static void test_db_insert_and_get() {
     assert_string_equal(paths[2], "b");
     assert_string_equal(paths[3], "a");
 
-    unlink(path);
+    unlink(db);
 }
 
 // Assert we can limit large results to smaller ones.
 static void test_db_limit() {
     // Initialize database.
-    const char *path = "/tmp/foo.db";
-    db_t *db = db_init(path);
-    assert_non_null(db);
+    const char *db = "/tmp/foo.db";
+    assert_int_equal(db_init(db), 0);
 
     int rc;
 
@@ -107,16 +102,15 @@ static void test_db_limit() {
     assert_string_equal(paths[0], "c");
     assert_string_equal(paths[1], "b");
 
-    unlink(path);
+    unlink(db);
 }
 
 
 // Assert idempotency.
 static void test_db_idempotent() {
     // Initialize database.
-    const char *path = "/tmp/foo.db";
-    db_t *db = db_init(path);
-    assert_non_null(db);
+    const char *db = "/tmp/foo.db";
+    assert_int_equal(db_init(db), 0);
 
     int rc;
 
@@ -136,13 +130,14 @@ static void test_db_idempotent() {
     assert_string_equal(paths[0], "a");
     assert_string_equal(paths[1], "b");
 
-    unlink(path);
+    unlink(db);
 }
 
 // Assert we gracefully handle non-writable paths.
 static void test_db_nonwritable() {
-    db_t *db = db_init("/foo");
-    assert_null(db);
+    // Initialize database.
+    const char *db = "/foo.db";
+    assert_int_not_equal(db_init(db), 0);
 }
 
 int main() {
