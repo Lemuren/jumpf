@@ -82,7 +82,7 @@ int db_update_file(const char *db_path, const char *path, int atime) {
     int rc = sqlite3_step(stmt);
     switch (rc) {
         case SQLITE_ROW:
-            count = sqlite3_column_int64(stmt, 1) + 1;
+            count = sqlite3_column_int64(stmt, 0) + 1;
             break;
         case SQLITE_DONE:
             count = 1;
@@ -96,15 +96,16 @@ int db_update_file(const char *db_path, const char *path, int atime) {
     double score = _calculate_score(atime, count);
     const char *sql =
         " INSERT INTO files (path, atime, count, score) "
-        " VALUES (?, ?, 1, ?) "
+        " VALUES (?, ?, ?, ?) "
         " ON CONFLICT(path) DO UPDATE SET "
         "     atime = excluded.atime,     "
-        "     count = files.count + 1,    "
+        "     count = excluded.count,     "
         "     score = excluded.score;     ";
     if (sqlite3_prepare_v2(conn, sql, -1, &stmt, NULL) != SQLITE_OK) goto fail;
     if (sqlite3_bind_text(stmt, 1, path, -1, NULL) != SQLITE_OK) goto fail;
     if (sqlite3_bind_int(stmt, 2, atime) != SQLITE_OK) goto fail;
-    if (sqlite3_bind_double(stmt, 3, score) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_int(stmt, 3, count) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_double(stmt, 4, score) != SQLITE_OK) goto fail;
     if (sqlite3_step(stmt) != SQLITE_DONE) goto fail;
 
     sqlite3_finalize(stmt);

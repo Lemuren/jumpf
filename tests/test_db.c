@@ -133,6 +133,34 @@ static void test_db_idempotent() {
     unlink(db);
 }
 
+// Assert many counts makes a file rise to the top.
+static void test_db_many_count() {
+    // Initialize database.
+    const char *db = "/tmp/foo.db";
+    assert_int_equal(db_init(db), 0);
+
+    int rc;
+
+    for (int i = 0; i < 100; i++) {
+        rc = db_update_file(db, "a", TIMESTAMP + i);
+        assert_int_equal(rc, 0);
+    }
+    rc = db_update_file(db, "b", TIMESTAMP + 1000);
+    assert_int_equal(rc, 0);
+
+    char **paths;
+    int count = 0;
+    rc = db_get_top(db, 10, &paths, &count);
+    assert_int_equal(rc, 0);
+    assert_int_equal(count, 2);
+
+    assert_string_equal(paths[0], "a");
+    assert_string_equal(paths[1], "b");
+
+    unlink(db);
+}
+
+
 // Assert we gracefully handle non-writable paths.
 static void test_db_nonwritable() {
     // Initialize database.
@@ -149,6 +177,7 @@ int main() {
         cmocka_unit_test(test_db_limit),
         cmocka_unit_test(test_db_idempotent),
         cmocka_unit_test(test_db_nonwritable),
+        cmocka_unit_test(test_db_many_count),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
