@@ -3,7 +3,11 @@
 #include <math.h>
 #include <sqlite3.h>
 #include <string.h>
+#include <stdbool.h>
 #include "db/db.h"
+
+#define FILE_EXISTS 0
+#define FILE_NO_EXISTS -1
 
 struct db {
     sqlite3 *conn;
@@ -16,6 +20,8 @@ static const char *schema =
 
 static void _close(db_t *d, sqlite3_stmt *stmt);
 static double _calculate_score(int atime, int count);
+static int _write(db_t *d, db_file_t file, bool update);
+static int _read(db_t *d, const char *path, db_file_t *file);
 
 
 db_t *db_init(const char *path) {
@@ -80,112 +86,31 @@ int db_get_top(db_t *d, int limit, db_file_t **files, int *count) {
         (*files)[*count].score = sqlite3_column_double(stmt, 3);
     }
 
+    _close(d, stmt);
     return 0;
 }
 
 
 int db_update_file(db_t *d, const char *path, int atime) {
-    // Open a database connection.
-    if (sqlite3_open(d->path, &d->conn) != SQLITE_OK) return 1;
-    sqlite3_stmt *stmt = NULL;
+    db_file_t file = { 0 };
+    int rc = _read(d, path, &file);
 
-    // Prepare and bind statement.
-    const char *sql =
-        " SELECT path, atime, count, score FROM files "
-        " WHERE path = ?; "
-    ;
-    if (sqlite3_prepare_v2(d->conn, sql, -1, &stmt, NULL) != SQLITE_OK) {
-        _close(d, stmt);
-        return 2;
-    }
-
-    if (sqlite3_bind_text(stmt, 1, path, -1, NULL) != SQLITE_OK) {
-        _close(d, stmt);
-        return 3;
-    }
-
-    // Fetch file information from the database.
-    int rc = sqlite3_step(stmt);
-    // If it already exists we update the file.
-    if (rc == SQLITE_ROW) {
-        int count = sqlite3_column_int64(stmt, 2) + 1;
-        double score = _calculate_score(atime, count);
-        const char *sql =
-            " UPDATE files "
-            " SET atime = ?, count = ?, score = ? "
-            " WHERE path = ? ; "
-        ;
-
-        if (sqlite3_prepare_v2(d->conn, sql, -1, &stmt, NULL) != SQLITE_OK) {
-            _close(d, stmt);
-            return 10;
-        }
-
-        if (sqlite3_bind_int(stmt, 1, atime) != SQLITE_OK) {
-            _close(d, stmt);
-            return 11;
-        }
-
-        if (sqlite3_bind_int(stmt, 2, count) != SQLITE_OK) {
-            _close(d, stmt);
-            return 12;
-        }
-
-        if (sqlite3_bind_double(stmt, 3, score) != SQLITE_OK) {
-            _close(d, stmt);
-            return 13;
-        }
-
-        if (sqlite3_bind_text(stmt, 4, path, -1, NULL) != SQLITE_OK) {
-            _close(d, stmt);
-            return 14;
-        }
-
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            _close(d, stmt);
-            return 15;
-        }
-
-    // If it doesn't exist we create it.
-    } else if (rc == SQLITE_DONE) {
-        double score = _calculate_score(atime, 1);
-        const char *sql =
-            " INSERT INTO files (path, atime, count, score) "
-            " VALUES (?, ?, 1, ?) ; "
-        ;
-        if (sqlite3_prepare_v2(d->conn, sql, -1, &stmt, NULL) != SQLITE_OK) {
-            _close(d, stmt);
-            return 4;
-        }
-
-        if (sqlite3_bind_text(stmt, 1, path, -1, NULL) != SQLITE_OK) {
-            _close(d, stmt);
-            return 5;
-        }
-
-        if (sqlite3_bind_int(stmt, 2, atime) != SQLITE_OK) {
-            _close(d, stmt);
-            return 6;
-        }
-
-        if (sqlite3_bind_double(stmt, 3, score) != SQLITE_OK) {
-            _close(d, stmt);
-            return 7;
-        }
-
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            _close(d, stmt);
-            return 8;
-        }
-
-
-    // Anything else is an error.
+    if (rc == FILE_EXISTS) {
+        file.count++;
+        file.atime = atime;
+        file.score = _calculate_score(atime, file.count);
+        if (_write(d, file, true)) return 2;
+    } else if (rc == FILE_NO_EXISTS) {
+        file.path = calloc(2048, sizeof (char));
+        strcpy(file.path, path);
+        file.count = 1;
+        file.atime = atime;
+        file.score = _calculate_score(file.atime, file.count);
+        if (_write(d, file, false)) return 3;
     } else {
-        _close(d, stmt);
-        return 9;
+        return 1;
     }
 
-    _close(d, stmt);
     return 0;
 }
 
@@ -196,7 +121,83 @@ void db_free_results(db_file_t* files, int count) {
     free(files);
 }
 
+
 // #### Private Methods ####
+
+static int _read(db_t *d, const char *path, db_file_t *file) {
+    if (sqlite3_open(d->path, &d->conn) != SQLITE_OK) return 1;
+    sqlite3_stmt *stmt = NULL;
+
+    // Prepare and bind statement.
+    const char *sql =
+        " SELECT path, atime, count, score FROM files "
+        " WHERE path = ?; "
+    ;
+    if (sqlite3_prepare_v2(d->conn, sql, -1, &stmt, NULL) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_text(stmt, 1, path, -1, NULL) != SQLITE_OK) goto fail;
+
+    // Fetch file from the database.
+    int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        file->path = calloc(2048, sizeof (char));
+        strcpy(file->path, (char *)sqlite3_column_text(stmt, 0));
+        file->atime = sqlite3_column_int64(stmt, 1);
+        file->count = sqlite3_column_int64(stmt, 2);
+        file->score = sqlite3_column_double(stmt, 3);
+
+        sqlite3_finalize(stmt);
+        sqlite3_close(d->conn);
+        return FILE_EXISTS;
+    } else if (rc == SQLITE_DONE) {
+        file->path = NULL;
+        sqlite3_finalize(stmt);
+        sqlite3_close(d->conn);
+        return FILE_NO_EXISTS;
+    } else {
+        goto fail;
+    }
+
+    fail:
+        sqlite3_finalize(stmt);
+        sqlite3_close(d->conn);
+        return 1;
+}
+
+static int _write(db_t *d, db_file_t file, bool update) {
+    if (sqlite3_open(d->path, &d->conn) != SQLITE_OK) return 1;
+    sqlite3_stmt *stmt = NULL;
+
+    const char *sql = update ?
+        " UPDATE files "
+        " SET path = ?, atime = ?, count = ?, score = ? "
+        " WHERE path = ? ; "
+        :
+        " INSERT INTO files (path, atime, count, score) "
+        " VALUES (?, ?, ?, ?) ; "
+    ;
+
+    if (sqlite3_prepare_v2(d->conn, sql, -1, &stmt, NULL) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_text(stmt, 1, file.path, -1, NULL) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_int(stmt, 2, file.atime) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_int(stmt, 3, file.count) != SQLITE_OK) goto fail;
+    if (sqlite3_bind_double(stmt, 4, file.score) != SQLITE_OK) goto fail;
+    if (update) {
+        if (sqlite3_bind_text(stmt, 5, file.path, -1, NULL) != SQLITE_OK) goto fail;
+    }
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) goto fail;
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(d->conn);
+
+    return 0;
+
+    fail:
+        sqlite3_finalize(stmt);
+        sqlite3_close(d->conn);
+        return 1;
+}
+
 static void _close(db_t *d, sqlite3_stmt *stmt) {
     sqlite3_finalize(stmt);
     sqlite3_close(d->conn);
