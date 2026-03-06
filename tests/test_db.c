@@ -3,10 +3,10 @@
 #include <setjmp.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
 #include <cmocka.h>
 #include "db/db.h"
 
-#define TIMESTAMP 1772412200
 
 // Assert we can initialize an empty database in memory.
 static void test_db_init() {
@@ -50,18 +50,19 @@ static void test_db_get_top_empty() {
 // Assert we can insert a few files and retrieve them in the expected order.
 static void test_db_insert_and_get() {
     // Initialize database.
+    const time_t now = time(NULL);
     const char *db = "/tmp/foo.db";
     assert_int_equal(db_init(db), 0);
 
     int rc;
 
-    rc = db_update_file(db, "a", TIMESTAMP + 0);
+    rc = db_update_file(db, "a", now - 20);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "b", TIMESTAMP + 1);
+    rc = db_update_file(db, "b", now - 19);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "c", TIMESTAMP + 20);
+    rc = db_update_file(db, "d", now - 18);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "d", TIMESTAMP + 2);
+    rc = db_update_file(db, "c", now + 0);
     assert_int_equal(rc, 0);
 
     char **paths;
@@ -81,16 +82,17 @@ static void test_db_insert_and_get() {
 // Assert we can limit large results to smaller ones.
 static void test_db_limit() {
     // Initialize database.
+    const time_t now = time(NULL);
     const char *db = "/tmp/foo.db";
     assert_int_equal(db_init(db), 0);
 
     int rc;
 
-    rc = db_update_file(db, "a", TIMESTAMP + 0);
+    rc = db_update_file(db, "a", now - 2);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "b", TIMESTAMP + 1);
+    rc = db_update_file(db, "b", now - 1);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "c", TIMESTAMP + 2);
+    rc = db_update_file(db, "c", now - 0);
     assert_int_equal(rc, 0);
 
     char **paths;
@@ -109,16 +111,17 @@ static void test_db_limit() {
 // Assert idempotency.
 static void test_db_idempotent() {
     // Initialize database.
+    const time_t now = time(NULL);
     const char *db = "/tmp/foo.db";
     assert_int_equal(db_init(db), 0);
 
     int rc;
 
-    rc = db_update_file(db, "a", TIMESTAMP + 0);
+    rc = db_update_file(db, "a", now - 2);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "b", TIMESTAMP + 1);
+    rc = db_update_file(db, "b", now - 1);
     assert_int_equal(rc, 0);
-    rc = db_update_file(db, "a", TIMESTAMP + 2);
+    rc = db_update_file(db, "a", now - 0);
     assert_int_equal(rc, 0);
 
     char **paths;
@@ -136,16 +139,17 @@ static void test_db_idempotent() {
 // Assert many counts makes a file rise to the top.
 static void test_db_many_count() {
     // Initialize database.
+    const time_t now = time(NULL);
     const char *db = "/tmp/foo.db";
     assert_int_equal(db_init(db), 0);
 
     int rc;
 
     for (int i = 0; i < 100; i++) {
-        rc = db_update_file(db, "a", TIMESTAMP + i);
+        rc = db_update_file(db, "a", now + i - 1000);
         assert_int_equal(rc, 0);
     }
-    rc = db_update_file(db, "b", TIMESTAMP + 1000);
+    rc = db_update_file(db, "b", now + 0);
     assert_int_equal(rc, 0);
 
     char **paths;
@@ -168,6 +172,46 @@ static void test_db_nonwritable() {
     assert_int_not_equal(db_init(db), 0);
 }
 
+// Assert we can perform "normal" operations with expected results.
+static void test_normal() {
+    // Initialize database.
+    const time_t now = time(NULL);
+    const char *db = "/tmp/foo.db";
+    assert_int_equal(db_init(db), 0);
+    int rc;
+
+    // Insert a few files.
+    rc = db_update_file(db, "a", now - 128000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "b", now - 127000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "a", now - 116000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "c", now - 115000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "b", now - 114000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "b", now - 113000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "c", now - 112000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "d", now - 1000);
+    assert_int_equal(rc, 0);
+    rc = db_update_file(db, "c", now - 0000);
+    assert_int_equal(rc, 0);
+
+    // Assert on the order of them.
+    char **paths;
+    int count = 0;
+    rc = db_get_top(db, 10, &paths, &count);
+    assert_int_equal(rc, 0);
+    assert_int_equal(count, 4);
+    assert_string_equal(paths[0], "c");
+    assert_string_equal(paths[1], "d");
+    assert_string_equal(paths[2], "b");
+    assert_string_equal(paths[3], "a");
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_db_init),
@@ -178,6 +222,7 @@ int main() {
         cmocka_unit_test(test_db_idempotent),
         cmocka_unit_test(test_db_nonwritable),
         cmocka_unit_test(test_db_many_count),
+        cmocka_unit_test(test_normal),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

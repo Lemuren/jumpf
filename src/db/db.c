@@ -124,6 +124,6 @@ int db_update_file(const char *db_path, const char *path, int atime) {
 double _calculate_score(int atime, int count) {
     time_t now = time(NULL);
     double dt = (double)(now - atime);
-    double lambda = -0.00001;
-    return count * exp(lambda * dt);
+    double alpha = 0.25;
+    return log(1 + count) / pow(1 + dt, alpha);
 }
